@@ -21,6 +21,11 @@ var sites = []Taplist{
 		URL:       "http://chucks.jjshanks.net/draft",
 		processor: readBeerChucksGreenwood,
 	},
+	{
+		Venue:     "Chuck's Hop Shop (Central District)",
+		URL:       "http://chuckstaplist.com",
+		processor: readBeerChucksCentralDistrict,
+	},
 }
 
 type Beer struct {
@@ -41,7 +46,7 @@ func (b Beer) String() string {
 }
 
 func main() {
-	for _, tl := range sites {
+	for i, tl := range sites {
 		beers := []Beer{}
 		c := colly.NewCollector()
 		tl.processor(c, &beers)
@@ -52,6 +57,9 @@ func main() {
 		fmt.Printf("%s\n%s\n", banner, underline)
 		for _, beer := range beers {
 			fmt.Println(beer)
+		}
+		if i < len(sites)-1 {
+			fmt.Println()
 		}
 	}
 
@@ -68,6 +76,21 @@ func readBeerChucksGreenwood(c *colly.Collector, beers *[]Beer) {
 				Name:    row.ChildText("td.draft_name"),
 				ABV:     row.ChildText("td.draft_abv"),
 				Origin:  row.ChildText("td.draft_origin"),
+			}
+			*beers = append(*beers, beer)
+		})
+	})
+}
+
+func readBeerChucksCentralDistrict(c *colly.Collector, beers *[]Beer) {
+	c.OnHTML("table.taplist-table > tbody", func(e *colly.HTMLElement) {
+		e.ForEach("tr", func(_ int, row *colly.HTMLElement) {
+			beer := Beer{
+				Brewery: row.ChildText("td:nth-child(2)"),
+				Name:    row.ChildText("td:nth-child(3)"),
+				Style:   row.ChildText("td:nth-child(4)"),
+				Origin:  row.ChildText("td:nth-child(7)"),
+				ABV:     strings.Replace(row.ChildText("td:nth-child(8)"), "%", "", -1),
 			}
 			*beers = append(*beers, beer)
 		})
