@@ -2,9 +2,13 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
-	"github.com/gocolly/colly"
+	"os"
 	"strings"
+
+	"github.com/gocolly/colly"
 )
 
 type Taplist struct {
@@ -79,11 +83,25 @@ func (b Beer) Valid() bool {
 }
 
 func main() {
+	jsonOutput := flag.Bool("json", false, "write output as JSON")
+	flag.Parse()
+
 	for i, tl := range sites {
 		beers := []Beer{}
 		c := colly.NewCollector()
 		tl.processor(c, &beers)
 		c.Visit(tl.URL)
+
+		if *jsonOutput {
+			output := map[string]interface{}{
+				"Venue": tl.Venue,
+				"URL":   tl.URL,
+				"Beers": beers,
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.Encode(output)
+			continue
+		}
 
 		banner := "Beer list for " + tl.Venue
 		underline := strings.Repeat("=", len(banner))
