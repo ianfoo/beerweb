@@ -13,18 +13,28 @@ type Taplist struct {
 	processor func(*colly.Collector, *[]Beer)
 }
 
-// Sites to visit. Just Chuck's to start.
-// Adding more will require different scraper functions, or API access.
 var sites = []Taplist{
 	{
-		Venue:     "Chuck's Hop Shop (Greenwood)",
-		URL:       "http://chucks.jjshanks.net/draft",
-		processor: readBeerChucksGreenwood,
+		Venue: "Chuck's Hop Shop (Greenwood)",
+		URL:   "http://chucks.jjshanks.net/draft",
+		processor: makeHTMLTableScraper(
+			"div[id=draft_list] > table",
+			"td.draft_brewery",
+			"td.draft_name",
+			"",
+			"td.draft_origin",
+			"td.draft_abv"),
 	},
 	{
-		Venue:     "Chuck's Hop Shop (Central District)",
-		URL:       "http://chuckstaplist.com",
-		processor: readBeerChucksCentralDistrict,
+		Venue: "Chuck's Hop Shop (Central District)",
+		URL:   "http://chuckstaplist.com",
+		processor: makeHTMLTableScraper(
+			"table.taplist-table > tbody",
+			"td:nth-child(2)",
+			"td:nth-child(3)",
+			"td:nth-child(4)",
+			"td:nth-child(7)",
+			"td:nth-child(8)"),
 	},
 }
 
@@ -36,13 +46,36 @@ type Beer struct {
 	Origin  string
 }
 
+// Format the Beer as a pretty-ish string.
 func (b Beer) String() string {
-	return fmt.Sprintf("%s (%s) | %s | %s | %s%% abv",
-		b.Brewery,
-		b.Origin,
-		b.Name,
-		b.Style,
-		b.ABV)
+	s := strings.Builder{}
+	s.WriteString(b.Brewery)
+	if b.Origin != "" {
+		s.WriteByte('(')
+		s.WriteString(b.Origin)
+		s.WriteByte(')')
+	}
+	s.WriteString(" | ")
+	s.WriteString(b.Name)
+	if b.Style != "" {
+		s.WriteString(" | ")
+		s.WriteString(b.Style)
+	}
+	if b.ABV != "" {
+		s.WriteString(" | ")
+		s.WriteString(b.ABV)
+		if !strings.HasSuffix(b.ABV, "%") {
+			s.WriteByte('%')
+		}
+		s.WriteString(" abv")
+	}
+	return s.String()
+}
+
+// Valid will return true if a beer has a brewery and a name.
+// Extra details are gravy.
+func (b Beer) Valid() bool {
+	return b.Brewery != "" && b.Name != ""
 }
 
 func main() {
@@ -65,34 +98,31 @@ func main() {
 
 }
 
-func readBeerChucksGreenwood(c *colly.Collector, beers *[]Beer) {
-	c.OnHTML(`div[id=draft_list] > table`, func(e *colly.HTMLElement) {
-		e.ForEach("tr", func(_ int, row *colly.HTMLElement) {
-			if !strings.HasPrefix(row.Attr("class"), "draft_") {
-				return
-			}
-			beer := Beer{
-				Brewery: row.ChildText("td.draft_brewery"),
-				Name:    row.ChildText("td.draft_name"),
-				ABV:     row.ChildText("td.draft_abv"),
-				Origin:  row.ChildText("td.draft_origin"),
-			}
-			*beers = append(*beers, beer)
-		})
-	})
-}
+// makeHTMLTableScraper assumes that beers are listed in an HTML table,
+// an returns a function that extract them, given HTML selectors to find
+// the beer list and the beer details within each row.
+func makeHTMLTableScraper(
+	tableSelector,
+	brewerySelector,
+	nameSelector,
+	styleSelector,
+	originSelector,
+	abvSelector string) func(c *colly.Collector, beers *[]Beer) {
 
-func readBeerChucksCentralDistrict(c *colly.Collector, beers *[]Beer) {
-	c.OnHTML("table.taplist-table > tbody", func(e *colly.HTMLElement) {
-		e.ForEach("tr", func(_ int, row *colly.HTMLElement) {
-			beer := Beer{
-				Brewery: row.ChildText("td:nth-child(2)"),
-				Name:    row.ChildText("td:nth-child(3)"),
-				Style:   row.ChildText("td:nth-child(4)"),
-				Origin:  row.ChildText("td:nth-child(7)"),
-				ABV:     strings.Replace(row.ChildText("td:nth-child(8)"), "%", "", -1),
-			}
-			*beers = append(*beers, beer)
+	return func(c *colly.Collector, beers *[]Beer) {
+		c.OnHTML(tableSelector, func(table *colly.HTMLElement) {
+			table.ForEach("tr", func(_ int, row *colly.HTMLElement) {
+				beer := Beer{
+					Brewery: row.ChildText(brewerySelector),
+					Name:    row.ChildText(nameSelector),
+					Style:   row.ChildText(styleSelector),
+					Origin:  row.ChildText(originSelector),
+					ABV:     row.ChildText(abvSelector),
+				}
+				if beer.Valid() {
+					*beers = append(*beers, beer)
+				}
+			})
 		})
-	})
+	}
 }
