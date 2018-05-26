@@ -1,18 +1,25 @@
-// Experiment: Scrape the Chuck's Hop Shop (85th) beer list.
+// Experiment: Scrape the Chuck's Hop Shop beer list.
 package beerweb
 
 import (
 	"strings"
-
-	"github.com/gocolly/colly"
 )
 
+// Taplister is an interface to be called and have returned a list of beers,
+// allowing for multiple strategies like HTML table scraping and API access.
+type Taplister interface {
+	FetchBeers() ([]Beer, error)
+	Venue() string
+	URL() string // TODO This is slightly awkward.
+}
+
+// Beer describes a beer by brewery, name, and any other available attributes.
 type Beer struct {
-	Brewery string
-	Name    string
-	Style   string
-	ABV     string
-	Origin  string
+	Brewery string `json:"brewery"`
+	Name    string `json:"name"`
+	Style   string `json:"style"`
+	ABV     string `json:"abv"`
+	Origin  string `json:"origin"`
 }
 
 // Format the Beer as a pretty-ish string.
@@ -45,39 +52,4 @@ func (b Beer) String() string {
 // Extra details are gravy.
 func (b Beer) Valid() bool {
 	return b.Brewery != "" && b.Name != ""
-}
-
-type Taplist struct {
-	Venue     string
-	URL       string
-	Processor func(*colly.Collector, *[]Beer)
-}
-
-// makeHTMLTableScraper assumes that beers are listed in an HTML table,
-// an returns a function that extract them, given HTML selectors to find
-// the beer list and the beer details within each row.
-func MakeHTMLTableScraper(
-	tableSelector,
-	brewerySelector,
-	nameSelector,
-	styleSelector,
-	originSelector,
-	abvSelector string) func(c *colly.Collector, beers *[]Beer) {
-
-	return func(c *colly.Collector, beers *[]Beer) {
-		c.OnHTML(tableSelector, func(table *colly.HTMLElement) {
-			table.ForEach("tr", func(_ int, row *colly.HTMLElement) {
-				beer := Beer{
-					Brewery: row.ChildText(brewerySelector),
-					Name:    row.ChildText(nameSelector),
-					Style:   row.ChildText(styleSelector),
-					Origin:  row.ChildText(originSelector),
-					ABV:     row.ChildText(abvSelector),
-				}
-				if beer.Valid() {
-					*beers = append(*beers, beer)
-				}
-			})
-		})
-	}
 }

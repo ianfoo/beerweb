@@ -4,36 +4,36 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
-	"strings"
-
 	"github.com/gocolly/colly"
 	"github.com/ianfoo/beerweb"
+	"github.com/ianfoo/beerweb/html"
+	"os"
+	"strings"
 )
 
-var sites = []beerweb.Taplist{
-	{
-		Venue: "Chuck's Hop Shop (Greenwood)",
-		URL:   "http://chucks.jjshanks.net/draft",
-		Processor: beerweb.MakeHTMLTableScraper(
-			"div[id=draft_list] > table",
-			"td.draft_brewery",
-			"td.draft_name",
-			"",
-			"td.draft_origin",
-			"td.draft_abv"),
-	},
-	{
-		Venue: "Chuck's Hop Shop (Central District)",
-		URL:   "http://chuckstaplist.com",
-		Processor: beerweb.MakeHTMLTableScraper(
-			"table.taplist-table > tbody",
-			"td:nth-child(2)",
-			"td:nth-child(3)",
-			"td:nth-child(4)",
-			"td:nth-child(7)",
-			"td:nth-child(8)"),
-	},
+var coll = colly.NewCollector()
+
+var sites = []beerweb.Taplister{
+	html.NewTaplist(coll, html.TaplistConfig{
+		Venue:           "Chuck's Hop Shop (Greenwood)",
+		URL:             "http://chucks.jjshanks.net/draft",
+		TableSelector:   "div[id=draft_list] > table",
+		BrewerySelector: "td.draft_brewery",
+		NameSelector:    "td.draft_name",
+		StyleSelector:   "",
+		OriginSelector:  "td.draft_origin",
+		ABVSelector:     "td.draft_abv",
+	}),
+	html.NewTaplist(coll, html.TaplistConfig{
+		Venue:           "Chuck's Hop Shop (Central District)",
+		URL:             "http://chuckstaplist.com",
+		TableSelector:   "table.taplist-table > tbody",
+		BrewerySelector: "td:nth-child(2)",
+		NameSelector:    "td:nth-child(3)",
+		StyleSelector:   "td:nth-child(4)",
+		OriginSelector:  "td:nth-child(7)",
+		ABVSelector:     "td:nth-child(8)",
+	}),
 }
 
 func main() {
@@ -41,15 +41,16 @@ func main() {
 	flag.Parse()
 
 	for i, tl := range sites {
-		beers := []beerweb.Beer{}
-		c := colly.NewCollector()
-		tl.Processor(c, &beers)
-		c.Visit(tl.URL)
+		beers, err := tl.FetchBeers()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error fetching beers from %s: %v\n", tl.Venue, err)
+			continue
+		}
 
 		if *jsonOutput {
 			output := map[string]interface{}{
-				"Venue": tl.Venue,
-				"URL":   tl.URL,
+				"Venue": tl.Venue(),
+				"URL":   tl.URL(),
 				"Beers": beers,
 			}
 			enc := json.NewEncoder(os.Stdout)
@@ -57,7 +58,7 @@ func main() {
 			continue
 		}
 
-		banner := "Beer list for " + tl.Venue
+		banner := "Beer list for " + tl.Venue()
 		underline := strings.Repeat("=", len(banner))
 		fmt.Printf("%s\n%s\n", banner, underline)
 		for _, beer := range beers {
