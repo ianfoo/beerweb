@@ -1,9 +1,8 @@
-// Experiment: Scrape the Chuck's Hop Shop beer list.
+// package beerweb defines the types necessary for fetching and displaying
+// beer lists.
 package beerweb
 
-import (
-	"strings"
-)
+import "strings"
 
 // Taplister is an interface to be called and have returned a list of beers,
 // allowing for multiple strategies like HTML table scraping and API access.
@@ -22,7 +21,7 @@ type Beer struct {
 	Origin  string `json:"origin"`
 }
 
-// Format the Beer as a pretty-ish string.
+// String formats the Beer as a pretty-ish string.
 func (b Beer) String() string {
 	s := strings.Builder{}
 	s.WriteString(b.Brewery)
