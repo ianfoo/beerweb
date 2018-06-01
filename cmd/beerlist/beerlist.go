@@ -4,69 +4,71 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/gocolly/colly"
-	"github.com/ianfoo/beerweb"
-	"github.com/ianfoo/beerweb/html"
 	"os"
 	"strings"
+
+	"github.com/ianfoo/beerweb"
+	"github.com/ianfoo/beerweb/venues"
 )
 
-var coll = colly.NewCollector()
-
-var sites = []beerweb.Taplister{
-	html.NewTaplist(coll, html.TaplistConfig{
-		Venue:           "Chuck's Hop Shop (Greenwood)",
-		URL:             "http://chucks.jjshanks.net/draft",
-		TableSelector:   "div[id=draft_list] > table",
-		BrewerySelector: "td.draft_brewery",
-		NameSelector:    "td.draft_name",
-		StyleSelector:   "",
-		OriginSelector:  "td.draft_origin",
-		ABVSelector:     "td.draft_abv",
-	}),
-	html.NewTaplist(coll, html.TaplistConfig{
-		Venue:           "Chuck's Hop Shop (Central District)",
-		URL:             "http://chuckstaplist.com",
-		TableSelector:   "table.taplist-table > tbody",
-		BrewerySelector: "td:nth-child(2)",
-		NameSelector:    "td:nth-child(3)",
-		StyleSelector:   "td:nth-child(4)",
-		OriginSelector:  "td:nth-child(7)",
-		ABVSelector:     "td:nth-child(8)",
-	}),
+type response struct {
+	venue    string
+	url      string
+	beerList []beerweb.Beer
+	err      error
 }
 
 func main() {
 	jsonOutput := flag.Bool("json", false, "write output as JSON")
 	flag.Parse()
 
-	for i, tl := range sites {
-		beers, err := tl.FetchBeers()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error fetching beers from %s: %v\n", tl.Venue, err)
+	respCh := make(chan response)
+	defer func() { close(respCh) }()
+
+	for _, tl := range venues.Venues {
+		go fetch(tl, respCh)
+	}
+
+	for i := 0; i < len(venues.Venues); i++ {
+		resp := <-respCh
+		if resp.err != nil {
+			fmt.Println(resp.err)
 			continue
 		}
 
 		if *jsonOutput {
 			output := map[string]interface{}{
-				"Venue": tl.Venue(),
-				"URL":   tl.URL(),
-				"Beers": beers,
+				"Venue": resp.venue,
+				"URL":   resp.url,
+				"Beers": resp.beerList,
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.Encode(output)
 			continue
 		}
 
-		banner := "Beer list for " + tl.Venue()
+		banner := "Beer list for " + resp.venue
 		underline := strings.Repeat("=", len(banner))
 		fmt.Printf("%s\n%s\n", banner, underline)
-		for _, beer := range beers {
+		for _, beer := range resp.beerList {
 			fmt.Println(beer)
 		}
-		if i < len(sites)-1 {
+		if i < len(venues.Venues)-1 {
 			fmt.Println()
 		}
 	}
 
+}
+
+func fetch(tl beerweb.Taplister, ch chan<- response) {
+	beers, err := tl.FetchBeers()
+	if err != nil {
+		ch <- response{err: fmt.Errorf("error fetching beers from %s: %v\n", tl.Venue, err)}
+		return
+	}
+	ch <- response{
+		venue:    tl.Venue(),
+		url:      tl.URL(),
+		beerList: beers,
+	}
 }
